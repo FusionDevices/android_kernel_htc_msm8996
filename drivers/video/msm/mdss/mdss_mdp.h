@@ -463,6 +463,8 @@ struct mdss_mdp_ctl {
 
 	/* HTC: */
 	struct mutex event_lock;
+
+	bool commit_in_progress;
 };
 
 struct mdss_mdp_mixer {
