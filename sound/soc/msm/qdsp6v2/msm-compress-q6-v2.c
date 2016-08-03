@@ -57,6 +57,10 @@
 #define DSP_NUM_OUTPUT_FRAME_BUFFERED	2
 #define FLAC_BLK_SIZE_LIMIT		65535
 
+/* Timestamp mode payload offsets */
+#define TS_LSW_OFFSET			6
+#define TS_MSW_OFFSET			7
+
 /* decoder parameter length */
 #define DDP_DEC_MAX_NUM_PARAM		18
 
@@ -131,6 +135,11 @@ struct msm_compr_audio {
 	uint64_t bytes_received; /* from userspace */
 	uint64_t bytes_sent; /* to DSP */
 
+	uint64_t received_total; /* bytes received from DSP */
+	uint64_t bytes_copied; /* to userspace */
+	uint64_t bytes_read; /* from DSP */
+	uint32_t bytes_read_offset; /* bytes read offset */
+
 	int32_t first_buffer;
 	int32_t last_buffer;
 	int32_t partial_drain_delay;
@@ -159,6 +168,8 @@ struct msm_compr_audio {
 	uint32_t next_stream;
 
 	uint64_t marker_timestamp;
+
+	uint32_t ts_header_offset; /* holds the timestamp header size */
 
 	struct msm_compr_gapless_state gapless_state;
 
@@ -406,6 +417,50 @@ static int msm_compr_send_buffer(struct msm_compr_audio *prtd)
 	return 0;
 }
 
+static int msm_compr_read_buffer(struct msm_compr_audio *prtd)
+{
+	int buffer_length;
+	uint64_t bytes_available;
+	uint64_t buffer_sent;
+	struct audio_aio_read_param param;
+
+	if (!atomic_read(&prtd->start)) {
+		pr_err("%s: stream is not in started state\n", __func__);
+		return -EINVAL;
+	}
+
+	buffer_length = prtd->codec_param.buffer.fragment_size -
+						 prtd->ts_header_offset;
+	bytes_available = prtd->received_total - prtd->bytes_copied;
+	buffer_sent = prtd->bytes_read - prtd->bytes_copied;
+	if (buffer_sent + buffer_length + prtd->ts_header_offset
+						> prtd->buffer_size) {
+		pr_debug(" %s : Buffer is Full bytes_available: %llu\n",
+				__func__, bytes_available);
+		return 0;
+	}
+
+	param.paddr = prtd->buffer_paddr + prtd->bytes_read_offset +
+						prtd->ts_header_offset;
+	param.len = buffer_length;
+	param.uid = buffer_length;
+	param.flags = prtd->codec_param.codec.flags;
+
+	pr_debug("%s: reading %d bytes from DSP byte_offset = %llu\n",
+			__func__, buffer_length, prtd->bytes_read);
+	if (q6asm_async_read(prtd->audio_client, &param) < 0) {
+		pr_err("%s:q6asm_async_read failed\n", __func__);
+	} else {
+		prtd->bytes_read += buffer_length + prtd->ts_header_offset;
+		prtd->bytes_read_offset += buffer_length +
+							prtd->ts_header_offset;
+		if (prtd->bytes_read_offset >= prtd->buffer_size)
+			prtd->bytes_read_offset -= prtd->buffer_size;
+	}
+
+	return 0;
+}
+
 static void compr_event_handler(uint32_t opcode,
 		uint32_t token, uint32_t *payload, void *priv)
 {
@@ -418,6 +473,8 @@ static void compr_event_handler(uint32_t opcode,
 	int stream_id;
 	uint32_t stream_index;
 	unsigned long flags;
+	uint64_t read_size;
+	uint32_t *buff_addr;
 
 	if (!prtd) {
 		pr_err("%s: prtd is NULL\n", __func__);
@@ -512,6 +569,49 @@ static void compr_event_handler(uint32_t opcode,
 
 		spin_unlock_irqrestore(&prtd->lock, flags);
 		break;
+
+	case ASM_DATA_EVENT_READ_DONE_V2:
+		spin_lock_irqsave(&prtd->lock, flags);
+
+		pr_debug("ASM_DATA_EVENT_READ_DONE_V2 offset %d, length %d\n",
+				 prtd->byte_offset, payload[4]);
+
+		if (prtd->ts_header_offset) {
+			/* Update the header for received buffer */
+			buff_addr = prtd->buffer + prtd->byte_offset;
+			/* Write the length of the buffer */
+			*buff_addr = prtd->codec_param.buffer.fragment_size
+						 - prtd->ts_header_offset;
+			buff_addr++;
+			/* Write the offset */
+			*buff_addr = prtd->ts_header_offset;
+			buff_addr++;
+			/* Write the TS LSW */
+			*buff_addr = payload[TS_LSW_OFFSET];
+			buff_addr++;
+			/* Write the TS MSW */
+			*buff_addr = payload[TS_MSW_OFFSET];
+		}
+		/* Always assume read_size is same as fragment_size */
+		read_size = prtd->codec_param.buffer.fragment_size;
+		prtd->byte_offset += read_size;
+		prtd->received_total += read_size;
+		if (prtd->byte_offset >= prtd->buffer_size)
+			prtd->byte_offset -= prtd->buffer_size;
+
+		snd_compr_fragment_elapsed(cstream);
+
+		if (!atomic_read(&prtd->start)) {
+			pr_debug("read_done received while not started, treat as xrun");
+			atomic_set(&prtd->xrun, 1);
+			spin_unlock_irqrestore(&prtd->lock, flags);
+			break;
+		}
+		msm_compr_read_buffer(prtd);
+
+		spin_unlock_irqrestore(&prtd->lock, flags);
+		break;
+
 	case ASM_DATA_EVENT_RENDERED_EOS:
 //HTC_AUD_START
 		wake_lock_timeout(&compr_lpa_q6_cb_wakelock, 5 * HZ);
