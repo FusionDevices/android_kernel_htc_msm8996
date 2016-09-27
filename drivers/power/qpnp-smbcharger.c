@@ -72,6 +72,7 @@ struct parallel_usb_cfg {
 	ktime_t				last_disabled;
 	bool				enabled_once;
 	int				parallel_aicl_ma;
+	int				min_main_icl_ma;
 	bool				use_parallel_aicl;
 	bool				parallel_en_in_progress;
 };
@@ -9801,6 +9802,8 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 				"max-pulse-allowed", rc, 1);
 	chip->parallel.use_parallel_aicl = of_property_read_bool(node,
 					"qcom,use-parallel-aicl");
+	OF_PROP_READ(chip, chip->parallel.min_main_icl_ma,
+				"parallel-min-main-icl-ma", rc, 1);
 	/*
 	 * use the dt values if they exist, otherwise do not touch the params
 	 */
