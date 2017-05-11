@@ -486,7 +486,8 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	pr_debug("%s\n", __func__);
 	kfree(prtd);
 done:
-    runtime->private_data = NULL;
+	runtime->private_data = NULL;
+
 	return rc;
 }
 
