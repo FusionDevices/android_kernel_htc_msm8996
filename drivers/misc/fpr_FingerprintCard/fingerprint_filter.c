@@ -246,7 +246,7 @@ static bool fpf_input_filter(struct input_handle *handle,
 	//standalone kernel mode. double tap means switch off
 	if (value > 0) {
 		if (!screen_on) {
-			fpf_pwrtrigger(0);
+			return false; // don't filter so pin appears
 		} else {
 			fingerprint_pressed = 1;
 			pr_info("fpf %s starting trigger \n",__func__);
@@ -257,11 +257,11 @@ static bool fpf_input_filter(struct input_handle *handle,
 		if (fingerprint_pressed) {
 			if (!screen_on) {
 				if (!powering_down_with_fingerprint_still_pressed) {
-					// fingerprint release happens normally, started (pressed) while screen asleep, and ended while asleep, so let's turn it on....
-					fpf_pwrtrigger(1);
+					return false; // don't filter so pin appears
 				} else {
 					// fingerprint release happens after a screen off that started AFTER the fingerprint was pressed. So do not wake the screen
 					powering_down_with_fingerprint_still_pressed = 0;
+					return false;
 				}
 			} else {
 				// screen is on...
@@ -276,23 +276,27 @@ static bool fpf_input_filter(struct input_handle *handle,
 				// job is not yet finished in home button func work, let's signal it, to do the home button = 0 sync as well
 					if (screen_on) {
 						do_home_button_off_too_in_work_func = 1;
+					} else {
+						return false;
 					}
 				}
 			}
 			return true;
+		} else 
+		{ // let event flow through
+			return false;
 		}
 	}
 	}
 	if (fpf_switch == 1) {
 		// simple home button mode, user space handles behavior
+		if (!screen_on) {
+			return false;
+		}
 		if (value > 0) {
-			if (!screen_on) {
-				return false;
-			} else {
-				fpf_vib();
-				input_report_key(fpf_pwrdev, KEY_HOME, 1);
-				input_sync(fpf_pwrdev);
-			}
+			fpf_vib();
+			input_report_key(fpf_pwrdev, KEY_HOME, 1);
+			input_sync(fpf_pwrdev);
 		} else {
 			input_report_key(fpf_pwrdev, KEY_HOME, 0);
 			input_sync(fpf_pwrdev);

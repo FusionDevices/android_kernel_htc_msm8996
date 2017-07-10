@@ -146,6 +146,8 @@ dtb-$(CONFIG_ARCH_MSM8996) += \
 	msm8996-v3-htc_pmewhl-xd.dtb \
 	msm8996-v3-htc_pmewhl-pvt.dtb \
 	msm8996-v3-htc_pmeuhljapan-pvt.dtb \
+	msm8996-v3-htc_pmewhl-xd.dtb \
+	msm8996-v3-htc_pmewhl-pvt.dtb \
 	msm8996pro-v1.1-htc_oce-xa.dtb \
 	msm8996pro-v1.1-htc_oce-xb.dtb \
 	msm8996pro-v1.1-htc_oce-xc.dtb \
@@ -243,6 +245,11 @@ dtb-$(CONFIG_ARCH_MSM8953) += msm8953-sim.dtb \
 	msm8953-cdp-1200p.dtb \
 	msm8953-iot-mtp.dtb \
 	apq8053-iot-mtp.dtb
+
+dtb-$(CONFIG_ARCH_SDM450) += sdm450-rcm.dtb \
+	sdm450-cdp.dtb \
+	sdm450-mtp.dtb \
+	sdm450-qrd.dtb
 
 dtb-$(CONFIG_ARCH_MDM9607) += mdm9607-rumi.dtb \
 	mdm9607-cdp.dtb \
