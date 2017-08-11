@@ -16,6 +16,8 @@
  * Copyright (C) 2006-2007 - Motorola
  * Copyright (c) 2008-2010, The Linux Foundation. All rights reserved.
  * Copyright (c) 2013, LGE Inc.
+ * Copyright (C) 2009-2014 Broadcom Corporation
+ * Copyright (C) 2015 Sony Mobile Communications Inc.
  * Copyright (c) 2014, HTC Corporation.
 
  * Date         Author           Comment
@@ -90,7 +92,7 @@ enum {
 	DEBUG_VERBOSE = 1U << 3,
 };
 
-static int debug_mask = 0; // DEBUG_USER_STATE | DEBUG_SUSPEND | DEBUG_BTWAKE | DEBUG_VERBOSE; 
+static int debug_mask = 0; // DEBUG_USER_STATE | DEBUG_SUSPEND | DEBUG_BTWAKE | DEBUG_VERBOSE;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 struct bluesleep_info {
@@ -812,14 +814,14 @@ static int bluesleep_populate_dt_pinfo(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	int tmp;
 
-	tmp = of_get_named_gpio(np, "brcm_bt_host_wake", 0);
+	tmp = of_get_named_gpio(np, "bcm,bt_host_wake", 0);
 	if (tmp < 0) {
 		pr_err("couldn't find host_wake gpio\n");
 		return -ENODEV;
 	}
 	bsi->host_wake = tmp;
 
-	tmp = of_get_named_gpio(np, "brcm_bt_wake_dev", 0);
+	tmp = of_get_named_gpio(np, "bcm,bt_wake_dev", 0);
 	if (tmp < 0)
 		bsi->has_ext_wake = 0;
 	else
@@ -975,10 +977,8 @@ static int bluesleep_remove(struct platform_device *pdev)
 static int bluesleep_resume(struct platform_device *pdev)
 {
 	if (test_bit(BT_SUSPEND, &flags)) {
-		/* [HTC_BT][N70][D201607061954]
 		if (debug_mask & DEBUG_SUSPEND)
 			pr_info("bluesleep resuming...\n");
-		 */
 		if ((bsi->uport != NULL) &&
 			(gpio_get_value(bsi->host_wake) == bsi->irq_polarity)) {
 			if (debug_mask & DEBUG_SUSPEND)
@@ -996,16 +996,15 @@ static int bluesleep_resume(struct platform_device *pdev)
 
 static int bluesleep_suspend(struct platform_device *pdev, pm_message_t state)
 {
-	/* [HTC_BT][N70][D201607061954]
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("bluesleep suspending...\n");
-	 */
 	set_bit(BT_SUSPEND, &flags);
 	return 0;
 }
 
 static struct of_device_id bluesleep_match_table[] = {
-	{ .compatible = "htc,bluesleep_bcm" },
+	{ .compatible = "htc,bluesleep_bcm,bcm,bluesleep" },
+
 	{}
 };
 
@@ -1086,42 +1085,6 @@ static int __init bluesleep_init(void)
 		pr_err("Unable to create /proc/%s directory\n", PROC_DIR);
 		return -ENOMEM;
 	}
-
-#if 0 //HTC_BT: we don't need these entries
-	/* Creating read/write "btwake" entry */
-	ent = proc_create("btwake", S_IRUGO | S_IWUSR | S_IWGRP,
-			sleep_dir, &bluesleep_proc_fops_btwake);
-	if (ent == NULL) {
-		pr_err("Unable to create /proc/%s/btwake entry\n", PROC_DIR);
-		retval = -ENOMEM;
-		goto fail;
-	}
-
-	/* read only proc entries */
-	if (proc_create("hostwake", S_IRUGO, sleep_dir,
-				&bluesleep_proc_fops_hostwake) == NULL) {
-		pr_err("Unable to create /proc/%s/hostwake entry\n", PROC_DIR);
-		retval = -ENOMEM;
-		goto fail;
-	}
-
-	/* read/write proc entries */
-	ent = proc_create("proto", S_IRUGO | S_IWUSR | S_IWGRP,
-			sleep_dir, &bluesleep_proc_fops_proto);
-	if (ent == NULL) {
-		pr_err("Unable to create /proc/%s/proto entry\n", PROC_DIR);
-		retval = -ENOMEM;
-		goto fail;
-	}
-
-	/* read only proc entries */
-	if (proc_create("asleep", S_IRUGO,
-			sleep_dir, &bluesleep_proc_fops_asleep) == NULL) {
-		pr_err("Unable to create /proc/%s/asleep entry\n", PROC_DIR);
-		retval = -ENOMEM;
-		goto fail;
-	}
-#endif
 
 #if BT_BLUEDROID_SUPPORT
 	/* read/write proc entries */
