@@ -5960,7 +5960,6 @@ static void smbchg_iusb_5v_2a_detect_work(struct work_struct *work)
 	} else {
 		/*5V/2A Adapter is detected*/
 		g_is_5v_2a_detected = true;
-		g_is_charger_ability_detected = true;
 		pr_smb(PR_STATUS, "Upgrade to 2A done, "
 			"current_aicl=%dmA, vbatt=%dmV, vbus=%duV, hard_limit=%d\n\n",
 		current_aicl, vbat_mv, vbus, hard_limit);
