@@ -25,7 +25,6 @@ obj-$(CONFIG_BT_MSM_SLEEP)	+= msm_bt_sleep.o
 msm_bt_sleep-objs		:= bluesleep.o
 
 # HTC_BT
-obj-$(CONFIG_ARCH_MSM8996)  += board-8996-rfkill.o
 obj-$(CONFIG_ARCH_MSM8996)  += htc_bdaddress.o
 obj-$(CONFIG_ARCH_MSM8996)  += bluesleep.o
 # HTC_BT
