@@ -26,7 +26,7 @@ msm_bt_sleep-objs		:= bluesleep.o
 
 # HTC_BT
 obj-$(CONFIG_ARCH_MSM8996)  += htc_bdaddress.o
-obj-$(CONFIG_ARCH_MSM8996)  += bluesleep.o
+
 # HTC_BT
 
 obj-$(CONFIG_BTFM_SLIM)				+= btfm_slim.o
