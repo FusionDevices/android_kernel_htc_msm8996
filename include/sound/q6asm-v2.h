@@ -75,11 +75,6 @@
 /* bit 4 represents META enable of encoded data buffer */
 #define BUFFER_META_ENABLE	0x0010
 
-/* bit 5 represents timestamp */
-/* bit 5 - 0 -- ASM_DATA_EVENT_READ_DONE will have relative time-stamp*/
-/* bit 5 - 1 -- ASM_DATA_EVENT_READ_DONE will have absolute time-stamp*/
-#define ABSOLUTE_TIMESTAMP_ENABLE  0x0020
-
 /* Enable Sample_Rate/Channel_Mode notification event from Decoder */
 #define SR_CM_NOTIFY_ENABLE	0x0004
 
@@ -163,7 +158,6 @@ struct audio_aio_read_param {
 	phys_addr_t   paddr;
 	uint32_t      len;
 	uint32_t      uid;
-	uint32_t      flags;/*meta data flags*/
 };
 
 struct audio_port_data {
@@ -254,9 +248,6 @@ int q6asm_open_read_v2(struct audio_client *ac, uint32_t format,
 
 int q6asm_open_read_v3(struct audio_client *ac, uint32_t format,
 		       uint16_t bits_per_sample);
-
-int q6asm_open_read_v4(struct audio_client *ac, uint32_t format,
-			uint16_t bits_per_sample);
 
 int q6asm_open_write(struct audio_client *ac, uint32_t format
 		/*, uint16_t bits_per_sample*/);
@@ -571,14 +562,6 @@ int q6asm_get_asm_app_type(int session_id);
 int q6asm_send_mtmx_strtr_window(struct audio_client *ac,
 		struct asm_session_mtmx_strtr_param_window_v2_t *window_param,
 		uint32_t param_id);
-
-/* Configure DSP render mode */
-int q6asm_send_mtmx_strtr_render_mode(struct audio_client *ac,
-		uint32_t render_mode);
-
-/* Configure DSP clock recovery mode */
-int q6asm_send_mtmx_strtr_clk_rec_mode(struct audio_client *ac,
-		uint32_t clk_rec_mode);
 
 /* Retrieve the current DSP path delay */
 int q6asm_get_path_delay(struct audio_client *ac);

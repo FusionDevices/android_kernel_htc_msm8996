@@ -2274,7 +2274,7 @@ static void q6asm_add_mmaphdr(struct audio_client *ac, struct apr_hdr *hdr,
 
 static int __q6asm_open_read(struct audio_client *ac,
 			     uint32_t format, uint16_t bits_per_sample,
-			     bool use_v3_format, bool ts_mode)
+			     bool use_v3_format)
 {
 	int rc = 0x00;
 	struct asm_stream_cmd_open_read_v3 open;
@@ -2314,8 +2314,6 @@ static int __q6asm_open_read(struct audio_client *ac,
 	switch (format) {
 	case FORMAT_LINEAR_PCM:
 		open.mode_flags |= 0x00;
-		if (ts_mode)
-			open.mode_flags |= ABSOLUTE_TIMESTAMP_ENABLE;
 		if (use_v3_format)
 			open.enc_cfg_id = ASM_MEDIA_FMT_MULTI_CHANNEL_PCM_V3;
 		else
@@ -2390,14 +2388,14 @@ int q6asm_open_read(struct audio_client *ac,
 		uint32_t format)
 {
 	return __q6asm_open_read(ac, format, 16,
-				 false /*use_v3_format*/, false/*ts_mode*/);
+				 false /*use_v3_format*/);
 }
 
 int q6asm_open_read_v2(struct audio_client *ac, uint32_t format,
 			uint16_t bits_per_sample)
 {
 	return __q6asm_open_read(ac, format, bits_per_sample,
-				 false /*use_v3_format*/, false/*ts_mode*/);
+				 false /*use_v3_format*/);
 }
 
 /*
@@ -2411,24 +2409,9 @@ int q6asm_open_read_v3(struct audio_client *ac, uint32_t format,
 			uint16_t bits_per_sample)
 {
 	return __q6asm_open_read(ac, format, bits_per_sample,
-				 true /*use_v3_format*/, false/*ts_mode*/);
+				 true /*use_v3_format*/);
 }
 EXPORT_SYMBOL(q6asm_open_read_v3);
-
-/*
- * asm_open_read_v4 - Opens audio capture session
- *
- * @ac: Client session handle
- * @format: encoder format
- * @bits_per_sample: bit width of capture session
- */
-int q6asm_open_read_v4(struct audio_client *ac, uint32_t format,
-			uint16_t bits_per_sample)
-{
-	return __q6asm_open_read(ac, format, bits_per_sample,
-				true /*use_v3_format*/, true/*ts_mode*/);
-}
-EXPORT_SYMBOL(q6asm_open_read_v4);
 
 int q6asm_open_write_compressed(struct audio_client *ac, uint32_t format,
 				uint32_t passthrough_flag)
@@ -2574,6 +2557,12 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 		open.postprocopo_id = ac->topology;
 	}
 //HTC_AUD_END
+
+	/* For DTS EAGLE only, force 24 bit */
+	if ((open.postprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX) ||
+	     (open.postprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_HPX_PLUS))
+		open.bits_per_sample = 24;
+
 	pr_debug("%s: perf_mode %d asm_topology 0x%x bps %d\n", __func__,
 		 ac->perf_mode, open.postprocopo_id, open.bits_per_sample);
 
@@ -3968,20 +3957,6 @@ static int q6asm_map_channels(u8 *channel_mapping, uint32_t channels,
 			PCM_CHANNEL_LB : PCM_CHANNEL_LS;
 		lchannel_mapping[5] = use_back_flavor ?
 			PCM_CHANNEL_RB : PCM_CHANNEL_RS;
-	} else if (channels == 7) {
-		/*
-		 * Configured for 5.1 channel mapping + 1 channel for debug
-		 * Can be customized based on DSP.
-		 */
-		lchannel_mapping[0] = PCM_CHANNEL_FL;
-		lchannel_mapping[1] = PCM_CHANNEL_FR;
-		lchannel_mapping[2] = PCM_CHANNEL_FC;
-		lchannel_mapping[3] = PCM_CHANNEL_LFE;
-		lchannel_mapping[4] = use_back_flavor ?
-			PCM_CHANNEL_LB : PCM_CHANNEL_LS;
-		lchannel_mapping[5] = use_back_flavor ?
-			PCM_CHANNEL_RB : PCM_CHANNEL_RS;
-		lchannel_mapping[6] = PCM_CHANNEL_CS;
 	} else if (channels == 8) {
 		lchannel_mapping[0] = PCM_CHANNEL_FL;
 		lchannel_mapping[1] = PCM_CHANNEL_FR;
@@ -6651,11 +6626,7 @@ int q6asm_async_read(struct audio_client *ac,
 		lbuf_phys_addr = (param->paddr - 64);
 		dir = OUT;
 	} else {
-		if (param->flags & COMPRESSED_TIMESTAMP_FLAG)
-			lbuf_phys_addr = param->paddr -
-				 sizeof(struct snd_codec_metadata);
-		else
-			lbuf_phys_addr = param->paddr;
+		lbuf_phys_addr = param->paddr;
 		dir = OUT;
 	}
 
@@ -7032,18 +7003,16 @@ int q6asm_send_mtmx_strtr_window(struct audio_client *ac,
 	matrix.param.data_payload_addr_lsw = 0;
 	matrix.param.data_payload_addr_msw = 0;
 	matrix.param.mem_map_handle = 0;
-	matrix.param.data_payload_size =
-		sizeof(struct asm_stream_param_data_v2) +
-		sizeof(struct asm_session_mtmx_strtr_param_window_v2_t);
+	matrix.param.data_payload_size = sizeof(matrix) -
+			sizeof(matrix.hdr) - sizeof(matrix.param);
 	matrix.param.direction = 0; /* RX */
 	matrix.data.module_id = ASM_SESSION_MTMX_STRTR_MODULE_ID_AVSYNC;
 	matrix.data.param_id = param_id;
-	matrix.data.param_size =
-		sizeof(struct asm_session_mtmx_strtr_param_window_v2_t);
+	matrix.data.param_size = matrix.param.data_payload_size -
+			sizeof(matrix.data);
 	matrix.data.reserved = 0;
-	memcpy(&(matrix.config.window_param),
-	       window_param,
-	       sizeof(struct asm_session_mtmx_strtr_param_window_v2_t));
+	matrix.window_lsw = window_param->window_lsw;
+	matrix.window_msw = window_param->window_msw;
 
 	rc = apr_send_pkt(ac->apr, (uint32_t *) &matrix);
 	if (rc < 0) {
@@ -7073,177 +7042,7 @@ int q6asm_send_mtmx_strtr_window(struct audio_client *ac,
 	rc = 0;
 fail_cmd:
 	return rc;
-}
-
-int q6asm_send_mtmx_strtr_render_mode(struct audio_client *ac,
-		uint32_t render_mode)
-{
-	struct asm_mtmx_strtr_params matrix;
-	struct asm_session_mtmx_strtr_param_render_mode_t render_param;
-	int sz = 0;
-	int rc  = 0;
-
-	pr_debug("%s: render mode is %d\n", __func__, render_mode);
-
-	if (!ac) {
-		pr_err("%s: audio client handle is NULL\n", __func__);
-		rc = -EINVAL;
-		goto exit;
-	}
-
-	if (ac->apr == NULL) {
-		pr_err("%s: ac->apr is NULL\n", __func__);
-		rc = -EINVAL;
-		goto exit;
-	}
-
-	if ((render_mode != ASM_SESSION_MTMX_STRTR_PARAM_RENDER_DEFAULT) &&
-	    (render_mode != ASM_SESSION_MTMX_STRTR_PARAM_RENDER_LOCAL_STC)) {
-		pr_err("%s: Invalid render mode %d\n", __func__, render_mode);
-		rc = -EINVAL;
-		goto exit;
-	}
-
-	memset(&render_param, 0,
-	       sizeof(struct asm_session_mtmx_strtr_param_render_mode_t));
-	render_param.flags = render_mode;
-
-	memset(&matrix, 0, sizeof(struct asm_mtmx_strtr_params));
-	sz = sizeof(struct asm_mtmx_strtr_params);
-	q6asm_add_hdr(ac, &matrix.hdr, sz, TRUE);
-	atomic_set(&ac->cmd_state, -1);
-	matrix.hdr.opcode = ASM_SESSION_CMD_SET_MTMX_STRTR_PARAMS_V2;
-
-	matrix.param.data_payload_addr_lsw = 0;
-	matrix.param.data_payload_addr_msw = 0;
-	matrix.param.mem_map_handle = 0;
-	matrix.param.data_payload_size =
-		sizeof(struct asm_stream_param_data_v2) +
-		sizeof(struct asm_session_mtmx_strtr_param_render_mode_t);
-	matrix.param.direction = 0; /* RX */
-	matrix.data.module_id = ASM_SESSION_MTMX_STRTR_MODULE_ID_AVSYNC;
-	matrix.data.param_id = ASM_SESSION_MTMX_STRTR_PARAM_RENDER_MODE_CMD;
-	matrix.data.param_size =
-		sizeof(struct asm_session_mtmx_strtr_param_render_mode_t);
-	matrix.data.reserved = 0;
-	memcpy(&(matrix.config.render_param),
-	       &render_param,
-	       sizeof(struct asm_session_mtmx_strtr_param_render_mode_t));
-
-	rc = apr_send_pkt(ac->apr, (uint32_t *) &matrix);
-	if (rc < 0) {
-		pr_err("%s: Render mode send failed paramid [0x%x]\n",
-			__func__, matrix.data.param_id);
-		rc = -EINVAL;
-		goto exit;
-	}
-
-	rc = wait_event_timeout(ac->cmd_wait,
-			(atomic_read(&ac->cmd_state) >= 0), 5*HZ);
-	if (!rc) {
-		pr_err("%s: timeout, Render mode send paramid [0x%x]\n",
-			__func__, matrix.data.param_id);
-		rc = -ETIMEDOUT;
-		goto exit;
-	}
-
-	if (atomic_read(&ac->cmd_state) > 0) {
-		pr_err("%s: DSP returned error[%s]\n",
-				__func__, adsp_err_get_err_str(
-				atomic_read(&ac->cmd_state)));
-		rc = adsp_err_get_lnx_err_code(
-				atomic_read(&ac->cmd_state));
-		goto exit;
-	}
-	rc = 0;
-exit:
-	return rc;
-}
-
-int q6asm_send_mtmx_strtr_clk_rec_mode(struct audio_client *ac,
-		uint32_t clk_rec_mode)
-{
-	struct asm_mtmx_strtr_params matrix;
-	struct asm_session_mtmx_strtr_param_clk_rec_t clk_rec_param;
-	int sz = 0;
-	int rc  = 0;
-
-	pr_debug("%s: clk rec mode is %d\n", __func__, clk_rec_mode);
-
-	if (!ac) {
-		pr_err("%s: audio client handle is NULL\n", __func__);
-		rc = -EINVAL;
-		goto exit;
-	}
-
-	if (ac->apr == NULL) {
-		pr_err("%s: ac->apr is NULL\n", __func__);
-		rc = -EINVAL;
-		goto exit;
-	}
-
-	if ((clk_rec_mode != ASM_SESSION_MTMX_STRTR_PARAM_CLK_REC_NONE) &&
-	    (clk_rec_mode != ASM_SESSION_MTMX_STRTR_PARAM_CLK_REC_AUTO)) {
-		pr_err("%s: Invalid clk rec mode %d\n", __func__, clk_rec_mode);
-		rc = -EINVAL;
-		goto exit;
-	}
-
-	memset(&clk_rec_param, 0,
-	       sizeof(struct asm_session_mtmx_strtr_param_clk_rec_t));
-	clk_rec_param.flags = clk_rec_mode;
-
-	memset(&matrix, 0, sizeof(struct asm_mtmx_strtr_params));
-	sz = sizeof(struct asm_mtmx_strtr_params);
-	q6asm_add_hdr(ac, &matrix.hdr, sz, TRUE);
-	atomic_set(&ac->cmd_state, -1);
-	matrix.hdr.opcode = ASM_SESSION_CMD_SET_MTMX_STRTR_PARAMS_V2;
-
-	matrix.param.data_payload_addr_lsw = 0;
-	matrix.param.data_payload_addr_msw = 0;
-	matrix.param.mem_map_handle = 0;
-	matrix.param.data_payload_size =
-		sizeof(struct asm_stream_param_data_v2) +
-		sizeof(struct asm_session_mtmx_strtr_param_clk_rec_t);
-	matrix.param.direction = 0; /* RX */
-	matrix.data.module_id = ASM_SESSION_MTMX_STRTR_MODULE_ID_AVSYNC;
-	matrix.data.param_id = ASM_SESSION_MTMX_STRTR_PARAM_CLK_REC_CMD;
-	matrix.data.param_size =
-		sizeof(struct asm_session_mtmx_strtr_param_clk_rec_t);
-	matrix.data.reserved = 0;
-	memcpy(&(matrix.config.clk_rec_param),
-	       &clk_rec_param,
-	       sizeof(struct asm_session_mtmx_strtr_param_clk_rec_t));
-
-	rc = apr_send_pkt(ac->apr, (uint32_t *) &matrix);
-	if (rc < 0) {
-		pr_err("%s: clk rec mode send failed paramid [0x%x]\n",
-			__func__, matrix.data.param_id);
-		rc = -EINVAL;
-		goto exit;
-	}
-
-	rc = wait_event_timeout(ac->cmd_wait,
-			(atomic_read(&ac->cmd_state) >= 0), 5*HZ);
-	if (!rc) {
-		pr_err("%s: timeout, clk rec mode send paramid [0x%x]\n",
-			__func__, matrix.data.param_id);
-		rc = -ETIMEDOUT;
-		goto exit;
-	}
-
-	if (atomic_read(&ac->cmd_state) > 0) {
-		pr_err("%s: DSP returned error[%s]\n",
-				__func__, adsp_err_get_err_str(
-				atomic_read(&ac->cmd_state)));
-		rc = adsp_err_get_lnx_err_code(
-				atomic_read(&ac->cmd_state));
-		goto exit;
-	}
-	rc = 0;
-exit:
-	return rc;
-}
+};
 
 static int __q6asm_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
 {
